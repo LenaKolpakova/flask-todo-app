@@ -1,0 +1,41 @@
+name: Flask CI Pipeline
+
+on:
+  push:
+    branches: [ "master", "main" ]
+  pull_request:
+    branches: [ "master", "main" ]
+
+jobs:
+  validate-and-smoke-test:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository code
+        uses: actions/checkout@v4
+
+      - name: Setup Python environment
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install markupsafe==1.1.1 jinja2==2.8 itsdangerous==2.0.1
+          pip install -r requirements.txt
+
+      - name: Initialize SQLite database
+        run: |
+          python -c "from application import create_app; from application.extensions import db; app = create_app('default'); app.app_context().push(); db.create_all(); print('Database initialized successfully.')"
+
+      - name: Start Flask server in background
+        run: |
+          nohup python manage.py runserver --host 0.0.0.0 --port 7345 > flask.log 2>&1 &
+          sleep 5
+
+      - name: Smoke test Flask server
+        run: |
+          curl -f http://127.0.0.1:7345/ || (echo "--- Flask log ---" && cat flask.log && exit 1)
+          echo "Smoke test passed: Flask server responded successfully."
